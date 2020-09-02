@@ -2,7 +2,7 @@ module.exports = {
   apps: [
     {
       name: 'Community Bot',
-      script: './src/index.js',
+      script: './index.js',
       // Options reference: https://pm2.keymetrics.io/docs/usage/application-declaration/
       exec_mode: 'cluster',
       ignore_watch: '[”[/\\]./”, “node_modules”]',
