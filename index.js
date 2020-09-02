@@ -1,27 +1,14 @@
-const Discord = require('discord.js');
-const Twitter = require('twitter');
 const express = require('express');
 const logger = require('morgan');
 const consola = require('consola');
-const bodyParser = require('body-parser');
 const lusca = require('lusca');
 const helmet = require('helmet');
+const compression = require('compression');
 
 /**
  * Load environment variables from the .env file, where API keys and passwords are stored.
  */
 require('dotenv').config();
-
-// Create Twitter Client
-const twitter = new Twitter({
-  consumer_key: process.env.TWITTER_CONSUMER_KEY,
-  consumer_secret: process.env.TWITTER_CONSUMER_SECRET,
-  access_token_key: process.env.TWITTER_ACCESS_TOKEN_KEY,
-  access_token_secret: process.env.TWITTER_ACCESS_TOKEN_SECRET
-});
-
-// Discord Client
-const discord = new Discord.Client();
 
 /**
  * Created Express server.
@@ -29,57 +16,39 @@ const discord = new Discord.Client();
 const app = express();
 
 /**
- * Setup host and port.
- */
-app.set('host', process.env.IP || '127.0.0.1');
-app.set('port', process.env.PORT || 8080);
-
-/**
  * Express configuration (compression, logging, body-parser,methodoverride)
  */
 app.set('view engine', 'ejs');
-app.use(
-  bodyParser.urlencoded({
-    extended: true
-  })
-);
+app.set('host', process.env.IP || '127.0.0.1');
+app.set('port', process.env.PORT || 8080);
 app.use(lusca.xframe('SAMEORIGIN'));
 app.use(lusca.xssProtection(true));
+lusca.referrerPolicy('same-origin');
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.set('etag', false);
+app.use(helmet());
+app.use(compression());
 app.disable('x-powered-by');
 
-switch (process.env.NODE_ENV) {
-  case 'production ':
-    app.use(logger('combined'));
-    app.enable('trust proxy');
+// const corsOptions = {
+//   origin: [process.env.WEB_URI, process.env.API_URI]
+// };
 
+switch (process.env.NODE_ENV) {
+  case 'production':
+    app.use(logger('combined'));
+    // app.use(cors(corsOptions));
+    app.enable('trust proxy');
     app.set('trust proxy', 1);
-    break;
-  case 'test':
     break;
   default:
     app.use(logger('dev'));
 }
 
 /**
- * Helmet - security for HTTP headers
- * Learn more at https://helmetjs.github.io/
+ * Primary app routes.
  */
-app.use(helmet());
-
-/**
- * Load middlewares
- */
-
-/**
- * Load vaildation middleware
- */
-
-/**
- * Primary app controllers.
- */
-const indexController = require('./controllers/index');
-
-app.get('/', indexController.getIndex);
 
 // client.post(
 //   'account/update_profile',
@@ -111,22 +80,46 @@ app.listen(app.get('port'), () => {
   consola.log('----------------------------------------');
 });
 
-// Discord clietn
-discord.on('ready', async () => {
-  consola.ready({ badge: true, message: `Discord Bot Connected` });
-  // Gives a invite link for the bot
-  try {
-    const link = await discord.generateInvite(['ADMINISTRATOR']);
-    consola.info(
-      `[ Discord] Please use the following link to invite the discord bot to your server ${link}`
-    );
+const discord = require('./discord/index');
 
-    discord.user.setActivity(process.env.DISCORD_BOT_STATUS, {
-      type: 'PLAYING'
+discord.login(process.env.DISCORD_TOKEN);
+
+function changeDiscordPresence(presence, type, url) {
+  try {
+    discord.user.setActivity(presence, {
+      type,
+      url,
     });
   } catch (e) {
     consola.error(new Error(e));
   }
+}
+
+// When connected to discord
+discord.on('ready', async () => {
+  consola.ready({
+    badge: true,
+    message: 'Discord Bot Connected',
+  });
+  // Init discord presence
+  changeDiscordPresence(process.env.DISCORD_BOT_STATUS, 'PLAYING', null);
+
+  // Change it every 1 mins if its updated
+  // setInterval(() => {
+  // changeDiscordPresence('running demonwolfdev.com', 'PLAYING', null);
+  // }, 1000 * 60);
+  // changeDiscordPresence('MrDemonWolf: Coffee n Chill', 'STREAMING', 'https://www.twitch.tv/mrdemonwolf')
 });
 
-discord.login(process.env.DICORD_TOKEN);
+const twitchBot = require('./twitch/index');
+
+// Connect Twitch Bot
+try {
+  twitchBot.connect();
+  consola.ready({
+    badge: true,
+    message: 'Twitch Bot Connected',
+  });
+} catch (error) {
+  consola.error(new Error(error));
+}
